@@ -6,3 +6,4 @@ scikit-learn
 matplotlib
 torch
 statsmodels
+tensorflow
