@@ -1,8 +1,8 @@
 Flask
 gunicorn
-sklearn
-torch
-pandas
 numpy
+pandas
+scikit-learn
 matplotlib
+torch
 statsmodels
