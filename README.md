@@ -91,7 +91,7 @@ Requirements:
 * Flask, sklearn, PyTorch, Pandas, Numpy, Matplotlib, statsmodels etc.
 
 # Clone the repository
-`git clone https://github.com/yourusername/crypto-liquidity-predictor.git`
+`git clone [https://github.com/yourusername/crypto-liquidity-predictor.git]`
 `cd crypto-liquidity-predictor`
 
 # Create a virtual environment
