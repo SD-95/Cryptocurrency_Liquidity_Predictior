@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: Cryptocurrency Liquidity Predictor
+    env: python with Machine Learning
+    envDetails: python-3.9
+    buildCommand: pip install -r requirements.txt
+    startCommand: python app.py
+    plan: free
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.10

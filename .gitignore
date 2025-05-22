@@ -1,0 +1,24 @@
+# Virtual environment
+crypto_environment/
+venv/
+env/
+ENV/
+
+# Model and large binary files
+*.h5
+*.pkl
+*.joblib
+
+# Jupyter notebooks (if not needed)
+.ipynb_checkpoints/
+
+# System or IDE files
+__pycache__/
+*.py[cod]
+.DS_Store
+Thumbs.db
+.vscode/
+*.log
+
+# Render and deployment artifacts (optional)
+*.zip
