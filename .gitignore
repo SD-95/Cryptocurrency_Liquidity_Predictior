@@ -6,7 +6,7 @@ ENV/
 
 # Model and large binary files
 *.h5
-*.pkl
+# *.pkl
 *.joblib
 
 # Jupyter notebooks (if not needed)
