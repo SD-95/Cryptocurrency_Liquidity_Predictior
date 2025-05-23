@@ -5,7 +5,7 @@ env/
 ENV/
 
 # Model and large binary files
-*.h5
+# *.h5
 # *.pkl
 *.joblib
 
