@@ -1,99 +1,91 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request
 import joblib
 import numpy as np
 from tensorflow.keras.models import load_model
 import os
 
-# Initialize Flask app
+# Suppress TensorFlow oneDNN optimization logs (optional)
+os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
+
 app = Flask(__name__)
 
-# Load models and encoders
-rf_model = joblib.load("random_forest_model.pkl")
-meta_model = joblib.load("meta_model.pkl")
-scaler = joblib.load("scaler.pkl")
-le = joblib.load("label_encoder.pkl")
-lstm_model = load_model("lstm_model.h5")
+try:
+    rf_model = joblib.load("random_forest_model.pkl")
+    meta_model = joblib.load("meta_model.pkl")
+    scaler = joblib.load("scaler.pkl")
+    le = joblib.load("label_encoder.pkl")
+    lstm_model = load_model("lstm_model.h5")
+except Exception as e:
+    print(f"❌ Model loading failed: {e}")
 
-# Expected final features for prediction
-feature_names = [
-    "1h", "24h", "7d",
-    "price_lag1", "volume_lag1", "mktcap_lag1",
-    "price_2d_avg", "volume_2d_avg",
-    "vol_to_mcap", "vol_price_ratio"
-]
-
-@app.route("/")
+@app.route("/", methods=["GET", "POST"])
 def home():
-    return render_template("index.html")
+    prediction = None
+    confidence = None
+    advice = None
 
-@app.route("/predict", methods=["POST"])
-def predict():
-    try:
-        data = request.get_json()
-        print("Received Input:", data)
+    if request.method == "POST":
+        try:
+            price = float(request.form.get("price", 0))
+            price_1h = float(request.form.get("price_1h", 0))
+            price_24h = float(request.form.get("price_24h", 0))
+            price_7d = float(request.form.get("price_7d", 0))
+            volume_24h = float(request.form.get("volume_24h", 0))
+            market_cap = float(request.form.get("market_cap", 0))
 
-        # Extract raw input features from HTML form
-        price = float(data.get("price", 0))
-        price_1h = float(data.get("price_1h", 0))
-        price_24h = float(data.get("price_24h", 0))
-        price_7d = float(data.get("price_7d", 0))
-        volume_24h = float(data.get("volume_24h", 0))
-        market_cap = float(data.get("market_cap", 0))
+            # Feature engineering
+            price_lag1 = price / (1 + price_1h / 100) if price_1h != -100 else 0
+            volume_lag1 = volume_24h
+            mktcap_lag1 = market_cap
 
-        # Simulate required lag and rolling features (assume lag = current - change)
-        price_lag1 = price / (1 + price_1h / 100) if price_1h != -100 else 0
-        volume_lag1 = volume_24h  # If you have no real lag data, assume same
-        mktcap_lag1 = market_cap  # Same logic
+            price_2d_avg = (price + price_lag1) / 2
+            volume_2d_avg = (volume_24h + volume_lag1) / 2
 
-        price_2d_avg = (price + price_lag1) / 2
-        volume_2d_avg = (volume_24h + volume_lag1) / 2
+            vol_to_mcap = volume_24h / market_cap if market_cap else 0
+            vol_price_ratio = volume_24h / price if price else 0
 
-        vol_to_mcap = volume_24h / market_cap if market_cap else 0
-        vol_price_ratio = volume_24h / price if price else 0
+            final_features = [
+                price_1h, price_24h, price_7d,
+                price_lag1, volume_lag1, mktcap_lag1,
+                price_2d_avg, volume_2d_avg,
+                vol_to_mcap, vol_price_ratio
+            ]
 
-        # Construct final feature vector
-        final_features = [
-            price_1h, price_24h, price_7d,
-            price_lag1, volume_lag1, mktcap_lag1,
-            price_2d_avg, volume_2d_avg,
-            vol_to_mcap, vol_price_ratio
-        ]
+            input_arr = np.array(final_features).reshape(1, -1)
+            input_scaled = scaler.transform(input_arr)
+            input_seq = input_scaled.reshape((1, 1, input_scaled.shape[1]))
 
-        # Reshape and scale
-        input_arr = np.array(final_features).reshape(1, -1)
-        input_scaled = scaler.transform(input_arr)
+            rf_probs = rf_model.predict_proba(input_scaled)
+            lstm_probs = lstm_model.predict(input_seq)
 
-        # LSTM input reshape
-        input_seq = input_scaled.reshape((1, 1, input_scaled.shape[1]))
+            stacked_input = np.hstack((rf_probs, lstm_probs))
+            final_pred_class = meta_model.predict(stacked_input)[0]
+            final_pred_proba = meta_model.predict_proba(stacked_input)[0][final_pred_class]
 
-        # Get model predictions
-        rf_probs = rf_model.predict_proba(input_scaled)
-        lstm_probs = lstm_model.predict(input_seq)
+            liquidity_level = le.inverse_transform([final_pred_class])[0]
 
-        stacked_input = np.hstack((rf_probs, lstm_probs))
-        final_pred_class = meta_model.predict(stacked_input)[0]
-        final_pred_proba = meta_model.predict_proba(stacked_input)[0][final_pred_class]
+            advice_map = {
+                "High": "Buy",
+                "Medium": "Hold",
+                "Low": "Avoid"
+            }
+            advice = advice_map.get(liquidity_level, "Unknown")
 
-        liquidity_level = le.inverse_transform([final_pred_class])[0]
+            prediction = liquidity_level
+            confidence = round(final_pred_proba * 100, 2)
 
-        # Generate advice
-        if liquidity_level == "High":
-            advice = "Buy"
-        elif liquidity_level == "Medium":
-            advice = "Hold"
-        else:
-            advice = "Avoid"
+        except Exception as e:
+            prediction = f"Error: {e}"
+            confidence = "-"
+            advice = "-"
 
-        return jsonify({
-            "liquidity_level": liquidity_level,
-            "confidence_score": round(final_pred_proba * 100, 2),
-            "investment_advice": advice
-        })
-
-    except Exception as e:
-        print("❌ Error during prediction:", e)
-        return jsonify({"error": str(e)}), 400
+    return render_template(
+        "index.html",
+        prediction_text=prediction,
+        confidence_score=confidence,
+        investment_advice=advice
+    )
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))  # Render provides PORT env variable
-    app.run(host="0.0.0.0", port=port, debug=True)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
